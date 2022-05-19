@@ -1,0 +1,244 @@
+---
+#   Copyright 2022 IBM Corporation
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+
+###########################################
+# tasks file for sap_kernel_upgrade
+###########################################
+
+#####################################
+# PreCheck upgsapkrn_input_sap_sid
+#####################################
+- name: Check upgsapkrn_input_sap_sid variable
+  fail:
+    msg: "Error: upgsapkrn_input_sap_sid is undefined."
+  when: (upgsapkrn_input_sap_sid is not defined) or (upgsapkrn_input_sap_sid is none)
+  
+
+#########################################################
+# Prepare directory on managed node to upload resources
+#########################################################
+- name: Check dir {{ upgsapkrn_dir_upload_managednode }} on managed node to upload resources
+  file:
+    path: "{{ upgsapkrn_dir_upload_managednode }}"
+    state: absent
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+
+- name: Check directory {{ upgsapkrn_dir_upload_managednode }}
+  file:
+    path: "{{ upgsapkrn_dir_upload_managednode }}"
+    state: directory
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+
+#########################################################
+# Prepare directory on managed node to extract resources
+#########################################################
+- name: Check dir {{ upgsapkrn_dir_extracted_sar_managednode }} on managed node to extract resources
+  file:
+    path: "{{ upgsapkrn_dir_extracted_sar_managednode }}"
+    state: absent
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+
+- name: Check directory {{ upgsapkrn_dir_extracted_sar_managednode }}
+  file:
+    path: "{{ upgsapkrn_dir_extracted_sar_managednode }}"
+    state: directory
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+    
+######################################################
+# Prepare directory on managed node to backup kernel
+######################################################
+- name: Check dir {{ upgsapkrn_dir_extracted_sar_managednode }} to backup kernel
+  file:
+    path: "{{ upgsapkrn_dir_kernel_backup_managednode }}"
+    state: absent
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+
+- name: Check directory {{ upgsapkrn_dir_kernel_backup_managednode }}
+  file:
+    path: "{{ upgsapkrn_dir_kernel_backup_managednode }}"
+    state: directory
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+    
+######################################################
+# Search SAPCAR in sapcar directory on control node
+######################################################
+- name: Search for SAPCAR in {{ upgsapkrn_dir_download_sapcar_controlnode }} directory
+  shell:
+    chdir: "{{ upgsapkrn_dir_download_sapcar_controlnode }}"
+    cmd: 'ls -d {{ upgsapkrn_file_sapcar }} | cat'
+  delegate_to: localhost
+  register: upgsapkrn_output_search_sapcar
+  when: upgsapkrn_fact_sapcar_file is undefined
+  
+- name: If found, set SAPCAR path variable
+  ansible.builtin.set_fact:
+    upgsapkrn_fact_sapcar_file: "{{ upgsapkrn_dir_download_sapcar_controlnode | default(upgsapkrn_fact_sapcar_file) }}"
+  when: upgsapkrn_output_search_sapcar.stdout != "" and upgsapkrn_fact_sapcar_file is undefined
+
+######################################################
+# if SAPCAR available, upload to managed node
+######################################################
+- name: Upload SAPCAR into dir {{ upgsapkrn_dir_upload_managednode }}
+  copy:
+    src: "{{ upgsapkrn_fact_sapcar_file }}/{{ upgsapkrn_file_sapcar }}"
+    dest: "{{ upgsapkrn_dir_upload_managednode }}/{{ upgsapkrn_file_sapcar }}"
+    mode: '0755'
+  when: upgsapkrn_output_search_sapcar.stdout != ""
+
+- name: If found, set SAPCAR path variable
+  ansible.builtin.set_fact:
+    upgsapkrn_fact_sapcar_file: "{{ upgsapkrn_dir_upload_managednode }}"
+  when: upgsapkrn_output_search_sapcar.stdout != ""
+ 
+######################################################
+# Search SAPCAR in sar directory on control node
+######################################################
+- name: Search for SAPCAR in {{ upgsapkrn_dir_download_sar_controlnode }} directory
+  shell:
+    chdir: "{{ upgsapkrn_dir_download_sar_controlnode }}"
+    cmd: 'ls -d {{ upgsapkrn_file_sapcar }} | cat'
+  delegate_to: localhost
+  register: upgsapkrn_output_search_sapcar_download_sar_controlnode
+  when: upgsapkrn_fact_sapcar_file_in_saphostagent_dir is undefined
+   
+- name: If found, set SAPCAR path variable
+  ansible.builtin.set_fact:
+    upgsapkrn_fact_sapcar_file_in_saphostagent_dir: "{{ upgsapkrn_dir_download_sar_controlnode | default(upgsapkrn_fact_sapcar_file) }}"
+  when: upgsapkrn_fact_sapcar_file is undefined and upgsapkrn_fact_sapcar_file_in_saphostagent_dir is undefined and upgsapkrn_output_search_sapcar_download_sar_controlnode.stdout != ""
+ 
+######################################################
+# if SAPCAR available , upload to managed node
+######################################################
+- name: Upload SAPCAR into dir {{ upgsapkrn_dir_upload_managednode }}
+  copy:
+    src: "{{ upgsapkrn_fact_sapcar_file_in_saphostagent_dir }}/{{ upgsapkrn_file_sapcar }}"
+    dest: "{{ upgsapkrn_dir_upload_managednode }}/{{ upgsapkrn_file_sapcar }}"
+    mode: '0755'
+  when: upgsapkrn_output_search_sapcar_download_sar_controlnode.stdout != "" and upgsapkrn_fact_sapcar_file is undefined
+
+- name: If found, set SAPCAR path variable
+  ansible.builtin.set_fact:
+    upgsapkrn_fact_sapcar_file: "{{ upgsapkrn_dir_upload_managednode }}"
+  when: upgsapkrn_output_search_sapcar_download_sar_controlnode.stdout != "" and upgsapkrn_fact_sapcar_file is undefined
+  
+################################################################
+# Search SAPCAR in the SAP kernel exe dir on managed node
+################################################################
+- name: Search for SAPCAR in {{ upgsapkrn_dir_download_sar_controlnode  }} directory
+  shell:
+    chdir: "{{ upgsapkrn_dir_sapcar_default_managednode }}"
+    cmd: 'ls -d {{ upgsapkrn_file_sapcar }} | cat'
+  register: sap_upgrade_sapcar_remote_available
+  when: upgsapkrn_fact_sapcar_file is undefined
+  
+- name: If found, set SAPCAR path variable
+  ansible.builtin.set_fact:
+    upgsapkrn_fact_sapcar_file: "{{ upgsapkrn_dir_sapcar_default_managednode }}"
+  when: upgsapkrn_fact_sapcar_file is undefined and upgsapkrn_fact_sapcar_file_in_saphostagent_dir is undefined and sap_upgrade_sapcar_remote_available.stdout != ""
+
+######################################################
+# end, if sapcar not available
+######################################################
+- name: Check SAPCAR in {{ upgsapkrn_fact_sapcar_file}}
+  fail:
+    msg: "Error: no SAPCAR found in {{ upgsapkrn_dir_download_sapcar_controlnode }} , {{ upgsapkrn_dir_download_sar_controlnode }} or {{ upgsapkrn_dir_sapcar_default_managednode }}"
+  when: upgsapkrn_fact_sapcar_file is undefined
+
+######################################################
+# Search SAR files in directory on control node
+######################################################
+- name: Search for SAR files in folder {{ upgsapkrn_dir_download_sar_controlnode  }}
+  find:
+    paths: "{{ upgsapkrn_dir_download_sar_controlnode }}"
+    patterns: '*.sar,*.SAR'
+  delegate_to: localhost
+  register: upgsapkrn_output_search_sapcar
+
+######################################################
+# end, if no SAR files available
+######################################################
+- name: Check SAR files
+  fail:
+    msg: "Error: No SAR files found in {{ upgsapkrn_dir_download_sar_controlnode }}"
+  when: upgsapkrn_output_search_sapcar.matched == 0
+
+######################################################
+# Upload SAR files to dir on managed node
+######################################################
+- name: Upload SAR files to dir {{ upgsapkrn_dir_upload_managednode }} on managed node
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ upgsapkrn_dir_upload_managednode }}"
+    owner: "{{ upgsapkrn_input_sap_adm }}"
+    group: "{{ upgsapkrn_input_sap_sys }}"
+    mode: 0755
+  with_fileglob:
+    - "{{ upgsapkrn_dir_download_sar_controlnode }}/*.SAR"
+    - "{{ upgsapkrn_dir_download_sar_controlnode }}/*.sar"
+
+######################################################
+# Extract SAR files into dir on managed node
+############################################### ######
+- name: Extract SAR files into dir {{ upgsapkrn_dir_extracted_sar_managednode }}
+  become_user: "{{ upgsapkrn_input_sap_adm }}"
+  become: yes
+  shell: "ls {{ upgsapkrn_dir_upload_managednode }}/*.*(sar|SAR)* | xargs -n1 {{ upgsapkrn_fact_sapcar_file }}/{{ upgsapkrn_file_sapcar }} -xvf"
+  environment:
+    LIBPATH: "{{ upgsapkrn_dir_extracted_sar_managednode }}"
+  args:
+    chdir: "{{ upgsapkrn_dir_extracted_sar_managednode }}"
+  register: result_files
+  failed_when: result_files.rc >= 2
+
+######################################################
+# Create backup on managed node
+######################################################
+- name: Create backup into dir {{ upgsapkrn_dir_kernel_backup_managednode }}
+  become_user: "{{ upgsapkrn_input_sap_adm }}"
+  become: yes
+  shell: "cp -rp {{ upgsapkrn_dir_upgrade_kernel }}/* {{ upgsapkrn_dir_kernel_backup_managednode }}"
+  environment:
+    LIBPATH: "{{ upgsapkrn_dir_kernel_backup_managednode }}"
+  args:
+    chdir: "{{ upgsapkrn_dir_kernel_backup_managednode }}"
+  register: result_files
+  failed_when: result_files.rc >= 2
+
+######################################################
+# copy files to SAP kernel exe dir
+######################################################
+- name: Copy extracted files into kernel dir {{ upgsapkrn_dir_upgrade_kernel }}
+  become_user: "{{ upgsapkrn_input_sap_adm }}"
+  become: yes
+  shell: "cp -rp {{ upgsapkrn_dir_extracted_sar_managednode }}/* {{ upgsapkrn_dir_upgrade_kernel }}"
+  environment:
+    LIBPATH: "{{ upgsapkrn_dir_upgrade_kernel }}"
+  args:
+    chdir: "{{ upgsapkrn_dir_upgrade_kernel }}"
+  register: result_files
+  failed_when: result_files.rc >= 2
+
